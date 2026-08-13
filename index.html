@@ -90,6 +90,25 @@
     justify-content: space-between;
     gap: 8px;
   }
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .delete-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1;
+    padding: 4px 6px;
+    cursor: pointer;
+    border-radius: 6px;
+  }
+  .delete-btn:hover {
+    color: var(--emphasis);
+    background: rgba(153, 60, 29, 0.08);
+  }
   .card-word {
     font-size: 17px;
     font-weight: 600;
@@ -223,6 +242,28 @@ async function fetchEntries() {
   render();
 }
 
+async function deleteEntry(entry) {
+  const confirmed = confirm(`确定删除「${entry.word}」吗？删除后无法恢复。`);
+  if (!confirmed) return;
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?id=eq.${entry.id}`,
+      {
+        method: "DELETE",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      },
+    );
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    allEntries = allEntries.filter((e) => e.id !== entry.id);
+    render();
+  } catch (err) {
+    alert("删除失败: " + err.message);
+  }
+}
+
 async function toggleMastered(entry) {
   const newStatus = entry.status === "mastered" ? "learning" : "mastered";
   const patch = {
@@ -293,9 +334,12 @@ function render() {
               <span class="card-word">${escapeHtml(entry.word)}</span>
               ${readingHtml}
             </div>
-            <button class="badge ${isMastered ? "mastered" : "learning"}" data-id="${entry.id}">
-              ${isMastered ? "已学会" : "学习中"}
-            </button>
+            <div class="card-actions">
+              <button class="badge ${isMastered ? "mastered" : "learning"}" data-id="${entry.id}">
+                ${isMastered ? "已学会" : "学习中"}
+              </button>
+              <button class="delete-btn" data-delete-id="${entry.id}" title="删除">✕</button>
+            </div>
           </div>
           <div class="card-meaning">${escapeHtml(entry.meaning || "")}</div>
           ${
@@ -312,6 +356,15 @@ function render() {
     btn.addEventListener("click", () => {
       const entry = allEntries.find((e) => String(e.id) === btn.dataset.id);
       if (entry) toggleMastered(entry);
+    });
+  });
+
+  list.querySelectorAll(".delete-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const entry = allEntries.find(
+        (e) => String(e.id) === btn.dataset.deleteId,
+      );
+      if (entry) deleteEntry(entry);
     });
   });
 }
