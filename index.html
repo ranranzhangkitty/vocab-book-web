@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>単語帳</title>
+<style>
+  :root {
+    --bg: #f7f3ec;
+    --surface: #ffffff;
+    --surface-mastered: #fbfaf7;
+    --border: #ece5d9;
+    --accent: #c8674f;
+    --accent-dim: rgba(200, 103, 79, 0.12);
+    --text: #4a3f36;
+    --text-heading: #2e2a24;
+    --text-muted: #a39a8d;
+    --emphasis: #993c1d;
+    --badge-mastered-bg: #e5e1d6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 16px;
+    padding-bottom: 48px;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .header h1 {
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--text-heading);
+    margin: 0;
+  }
+  .count {
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    border: none;
+    background: #fff;
+    color: #6b6258;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .tab-btn.active {
+    background: var(--accent);
+    color: #fff;
+  }
+  .search {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: #fff;
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 14px;
+  }
+  .card {
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 3px rgba(90, 80, 60, 0.06);
+    background: var(--surface);
+    margin-bottom: 10px;
+    font-family: "Meiryo UI", "Meiryo", system-ui, sans-serif;
+  }
+  .card.mastered {
+    background: var(--surface-mastered);
+  }
+  .card-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .card-word {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-heading);
+  }
+  .card-reading {
+    font-size: 13px;
+    color: var(--emphasis);
+    margin-left: 8px;
+  }
+  .badge {
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .badge.learning {
+    background: var(--accent-dim);
+    color: var(--emphasis);
+  }
+  .badge.mastered {
+    background: var(--badge-mastered-bg);
+    color: var(--text);
+  }
+  .card-meaning {
+    font-size: 13.5px;
+    color: var(--text);
+    margin-top: 6px;
+  }
+  .card-context {
+    font-size: 12.5px;
+    color: var(--text);
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    line-height: 1.6;
+  }
+  .card-context mark {
+    background: none;
+    color: var(--emphasis);
+    font-weight: 600;
+  }
+  .empty-state {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 40px 20px;
+  }
+  .config-notice {
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>単語帳</h1>
+  <span class="count" id="count"></span>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" data-lang="ja">日本語</button>
+  <button class="tab-btn" data-lang="en">English</button>
+</div>
+
+<input class="search" id="search" placeholder="搜索单词或释义" />
+
+<div id="list"></div>
+
+<script>
+/**
+ * Fill these in with your own Supabase project details.
+ * The extension's vocab-book.js writes entries into the same table
+ * (see VOCAB_SUPABASE_CONFIG), so both share the same data.
+ */
+const SUPABASE_URL = "https://jcbpqpzbzxrsnrtwewbv.supabase.co/rest/v1/";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjYnBxcHpienhyc25ydHdld2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY1ODI0NDQsImV4cCI6MjEwMjE1ODQ0NH0.Uure_Mm7E-_EA9166FKPw0Hd_6RNbpLvdyRTMQCKgIY"; 
+const SUPABASE_TABLE = "vocab_entries";
+
+let currentLang = "ja";
+let allEntries = [];
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function highlightContext(context, word) {
+  if (!context || !word) return escapeHtml(context || "");
+  const escapedContext = escapeHtml(context);
+  const escapedWord = escapeHtml(word);
+  return escapedContext.split(escapedWord).join(`<mark>${escapedWord}</mark>`);
+}
+
+async function fetchEntries() {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    document.getElementById("list").innerHTML = `
+      <div class="config-notice">
+        还没配置 Supabase 连接。打开这个文件顶部，填入你的 Supabase 项目 URL 和
+        anon key（和扩展里 vocab-book.js 用的是同一个项目），保存后重新部署即可。
+      </div>`;
+    return;
+  }
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?select=*&order=createdAt.desc`,
+      {
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      },
+    );
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    allEntries = await response.json();
+  } catch (err) {
+    document.getElementById("list").innerHTML = `
+      <div class="config-notice">加载失败：${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  render();
+}
+
+async function toggleMastered(entry) {
+  const newStatus = entry.status === "mastered" ? "learning" : "mastered";
+  const patch = {
+    status: newStatus,
+    masteredOrder:
+      newStatus === "mastered"
+        ? Math.max(0, ...allEntries.map((e) => e.masteredOrder || 0)) + 1
+        : null,
+  };
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?id=eq.${entry.id}`, {
+      method: "PATCH",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(patch),
+    });
+    entry.status = patch.status;
+    entry.masteredOrder = patch.masteredOrder;
+    render();
+  } catch (err) {
+    alert("更新失败: " + err.message);
+  }
+}
+
+function render() {
+  const searchTerm = (document.getElementById("search").value || "")
+    .trim()
+    .toLowerCase();
+
+  const filtered = allEntries.filter((e) => {
+    if (e.language !== currentLang) return false;
+    if (!searchTerm) return true;
+    return (
+      (e.word || "").toLowerCase().includes(searchTerm) ||
+      (e.meaning || "").toLowerCase().includes(searchTerm) ||
+      (e.reading || "").toLowerCase().includes(searchTerm)
+    );
+  });
+
+  document.getElementById("count").textContent = `共${filtered.length}词`;
+
+  const learning = filtered.filter((e) => e.status !== "mastered");
+  const mastered = filtered
+    .filter((e) => e.status === "mastered")
+    .sort((a, b) => (a.masteredOrder || 0) - (b.masteredOrder || 0));
+
+  const ordered = learning.concat(mastered);
+  const list = document.getElementById("list");
+
+  if (ordered.length === 0) {
+    list.innerHTML = `<div class="empty-state">还没有存词，去侧边栏选中文字点 Explain 保存吧</div>`;
+    return;
+  }
+
+  list.innerHTML = ordered
+    .map((entry) => {
+      const isMastered = entry.status === "mastered";
+      const readingHtml = entry.reading
+        ? `<span class="card-reading">${escapeHtml(entry.reading)}</span>`
+        : "";
+      return `
+        <div class="card ${isMastered ? "mastered" : ""}">
+          <div class="card-top">
+            <div>
+              <span class="card-word">${escapeHtml(entry.word)}</span>
+              ${readingHtml}
+            </div>
+            <button class="badge ${isMastered ? "mastered" : "learning"}" data-id="${entry.id}">
+              ${isMastered ? "已学会" : "学习中"}
+            </button>
+          </div>
+          <div class="card-meaning">${escapeHtml(entry.meaning || "")}</div>
+          ${
+            entry.context
+              ? `<div class="card-context">${highlightContext(entry.context, entry.word)}</div>`
+              : ""
+          }
+        </div>
+      `;
+    })
+    .join("");
+
+  list.querySelectorAll(".badge").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const entry = allEntries.find((e) => String(e.id) === btn.dataset.id);
+      if (entry) toggleMastered(entry);
+    });
+  });
+}
+
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    currentLang = btn.dataset.lang;
+    document
+      .querySelectorAll(".tab-btn")
+      .forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    render();
+  });
+});
+
+document.getElementById("search").addEventListener("input", render);
+
+fetchEntries();
+</script>
+</body>
+</html>
